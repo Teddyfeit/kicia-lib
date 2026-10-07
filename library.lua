@@ -18883,7 +18883,6 @@ local Library = (function()
 
         local Window = Library:CreateWindow({
             Title = 'My Script',
-            Icon  = 'rbxassetid://127234874352422',
         })
 
         local Main = Window:AddTab('Main')
