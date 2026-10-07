@@ -2,7 +2,7 @@
 --  1. LOAD
 -- ########################################################################
 
-local URL = 'https://raw.githubusercontent.com/Teddyfeit/sry-bro-idk-what-tf-im-dong/refs/heads/main/kicia-lib-v1.lua'
+local URL = 'https://raw.githubusercontent.com/Teddyfeit/kicia-lib/refs/heads/main/library.lua'
 
 local Library = loadstring(game:HttpGet(URL))()
 
