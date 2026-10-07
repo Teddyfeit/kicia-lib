@@ -15,7 +15,7 @@ print('[demo] Library.Version = ' .. tostring(Library.Version))
 
 local Window = Library:CreateWindow{
     Title     = 'Complete Demo',
-    Icon      = 'rbxassetid://127234874352422',
+    Icon      = '',
     MenuKey   = Enum.KeyCode.RightShift,
     Accent    = Color3.fromRGB(197, 59, 59),
     Directory = 'CompleteDemo',
