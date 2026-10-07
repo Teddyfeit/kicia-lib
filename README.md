@@ -1,4 +1,3 @@
-# kicia-lib - Used really much ai
 ================================================================================
   KICIALIB - FULL DOCUMENTATION
   ================================================================================
@@ -8,15 +7,15 @@
 
   Folder: ...\Default Project\KiciaLib\
 
-      KiciaLib-Bundle.lua        519,050 bytes   pure library, ends with return Library
-      Mein-Script.lua            521,119 bytes   everything in one file, run it directly
-      Mein-Script-Url.lua          5,136 bytes   loadstring + your code underneath
-      KiciaLib-Complete.lua       12,068 bytes   every widget in one demo script
-      Harmlos-Script.lua           2,001 bytes   tiny harmless demo
-      KiciaLib.lua                15,752 bytes   library, two-file variant
-      KiciaUI.lua                501,738 bytes   GUI engine (two-file variant only)
+      KiciaLib-Bundle.lua        515,287 bytes   pure library, ends with return Library
+      Mein-Script.lua            517,357 bytes   everything in one file, run it directly
+      Mein-Script-Url.lua          4,571 bytes   loadstring + your code underneath
+      KiciaLib-Complete.lua       9,277 bytes   every widget in one demo script
+      Harmlos-Script.lua           1,944 bytes   tiny harmless demo
+      KiciaLib.lua                13,077 bytes   library, two-file variant
+      KiciaUI.lua                501,276 bytes   GUI engine (two-file variant only)
       KiciaLib-Doku.txt                       this file (English)
-      KiciaLib-Tutorial.txt                   step-by-step (German)
+      KiciaLib-Tutorial.txt                   step-by-step for beginners
       Mein-Script                           example with buttons
 
 
@@ -28,7 +27,7 @@
   -------------------------------------------
   Open Mein-Script.lua in your executor and run it. The whole engine, the
   whole library and your own code are in that single file. Your code starts
-  at line 19,349 (jump there with Ctrl+End).
+  at line 19,334 (jump there with Ctrl+End).
 
   WAY B - one loadstring over the internet (the LinoriaLib pattern)
   -----------------------------------------------------------------
@@ -46,7 +45,7 @@
   -------------------------------------------
       local Library = loadstring(readfile('KiciaLib.lua'))()
 
-  Needs KiciaLib.lua (15,752 bytes) AND KiciaUI.lua (501,738 bytes) in the
+  Needs KiciaLib.lua (13,077 bytes) AND KiciaUI.lua (501,276 bytes) in the
   same folder. KiciaUI.lua can then be swapped on its own.
 
   RULE: always load a file as a file. Never mark a long text and paste it -
@@ -578,7 +577,7 @@
   Send me that message.
 
   "could not load KiciaUI.lua" only happens in WAY C - the file is
-  missing or outdated. Expected: 501,738 bytes. It cannot happen in
+  missing or outdated. Expected: 501,276 bytes. It cannot happen in
   WAY A or WAY B.
 
   The raw widget demos print their own results:
@@ -616,7 +615,7 @@
       or use WAY A (single local file).
 
   "KiciaLib could not load KiciaUI.lua"
-      WAY C only: KiciaUI.lua missing or outdated (501,738 bytes).
+      WAY C only: KiciaUI.lua missing or outdated (501,276 bytes).
 
   Syntax error in the middle of the file
       The file was corrupted while copying or pasting. Never paste
