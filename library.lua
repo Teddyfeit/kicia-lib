@@ -5,7 +5,7 @@
     In dieser Datei steckt NICHTS von deinem Code. Sie endet mit
     "return Library" und ist gedacht fuer das LinoriaLib-Muster:
 
-        local Library = loadstring(game:HttpGet('RAW_URL/KiciaLib-Bundle.lua'))()
+        local Library = loadstring(game:HttpGet('RAW_URL/library.lua'))()
         -- >>> ab hier dein Code mit den Buttons <<<
 
     Ohne Hosting stattdessen direkt ausfuehren:
@@ -19286,6 +19286,128 @@ function Library:CreateWindow(opts)
     function Window:SetAccent(color)
         menu:SetAccent(color)
         return Window
+    end
+
+    -- Configs. KiciaUI already ships a whole persistence module behind
+    -- the window (save, load, list, delete, json in and out) - it just
+    -- was never reachable through this wrapper.
+
+    local function persistence()
+        local ok, p = pcall(function() return menu:GetPersistence() end)
+        if ok and type(p) == 'table' then
+            return p
+        end
+        return nil
+    end
+
+    local function configCall(method, arg)
+        local p = persistence()
+        if p == nil or type(p[method]) ~= 'function' then
+            return nil, 'config module not available'
+        end
+
+        local ok, res = pcall(function()
+            if arg == nil then
+                return p[method](p)
+            end
+            return p[method](p, arg)
+        end)
+
+        if not ok then
+            return nil, tostring(res)
+        end
+        return res, nil
+    end
+
+    local function configFailed(err, what)
+        if err ~= nil then
+            warn('[KiciaLib] ' .. what .. ' failed: ' .. err)
+        end
+        return err == nil
+    end
+
+    -- plain array of the config names that exist on disk
+    function Window:ListConfigs()
+        local res = configCall('AllConfigs')
+        if type(res) == 'table' then
+            return res
+        end
+        return {}
+    end
+
+    function Window:SaveConfig(name)
+        local _, err = configCall('SaveToFile', name)
+        return configFailed(err, 'SaveConfig')
+    end
+
+    function Window:LoadConfig(name)
+        local _, err = configCall('LoadFromFile', name)
+        return configFailed(err, 'LoadConfig')
+    end
+
+    function Window:CreateConfig(name)
+        local _, err = configCall('CreateDefault', name)
+        return configFailed(err, 'CreateConfig')
+    end
+
+    function Window:DeleteConfig(name)
+        local _, err = configCall('DeleteFile', name)
+        return configFailed(err, 'DeleteConfig')
+    end
+
+    -- whole menu as a json string, or nil when it cannot be built
+    function Window:ExportConfig()
+        local res, err = configCall('ExportToJson')
+        if err ~= nil then
+            warn('[KiciaLib] ExportConfig failed: ' .. err)
+            return nil
+        end
+        return res
+    end
+
+    function Window:ImportConfig(json)
+        local _, err = configCall('LoadFromJson', json)
+        return configFailed(err, 'ImportConfig')
+    end
+
+    -- folder the .json files are written to, nil if Kicia did not say
+    function Window:GetConfigFolder()
+        local p = persistence()
+        local manager = p ~= nil and p._configManager or nil
+        if type(manager) == 'table' and type(manager._savePath) == 'string' then
+            return manager._savePath
+        end
+        return nil
+    end
+
+    -- Kicia's own state: AutoSave, AutoLoad, Keybind, window position
+    function Window:GetStateData()
+        local ok, s = pcall(function() return menu:GetStateData() end)
+        if ok and type(s) == 'table' then
+            return s
+        end
+        return nil
+    end
+
+    -- both return the connection, or nil when the signal is missing
+    function Window:OnConfigChanged(fn)
+        local p = persistence()
+        if p ~= nil and type(p.Changed) == 'table'
+            and type(p.Changed.Connect) == 'function' then
+            local ok, conn = pcall(function() return p.Changed:Connect(fn) end)
+            if ok then return conn end
+        end
+        return nil
+    end
+
+    function Window:OnConfigReloaded(fn)
+        local p = persistence()
+        if p ~= nil and type(p.Reloaded) == 'table'
+            and type(p.Reloaded.Connect) == 'function' then
+            local ok, conn = pcall(function() return p.Reloaded:Connect(fn) end)
+            if ok then return conn end
+        end
+        return nil
     end
 
     -- Unload fires your OnUnload callback, Destroy then saves state and
