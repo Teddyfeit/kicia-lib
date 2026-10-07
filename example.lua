@@ -1,21 +1,42 @@
--- ########################################################################
+--[[
+    KiciaLib-Complete.lua  -  every feature of the library in one script
+    Shows every widget and every method KiciaLib exposes:
+      - all core widgets (toggle, slider, dropdown, color, button,
+        input, keybind, label, divider, dependency box)
+      - every advanced widget that is reachable through AddRaw
+      - the element API (State / Get / Set / OnChanged / Raw)
+      - the window API (tabs, accent, visibility, unload)
+      - the library API (Version / Menu / Unload)
+
+    Nothing here changes the game. Every callback only prints.
+
+    Menu key: RightShift
+    Offline variant: replace the loadstring line with
+        local Library = loadstring(readfile('KiciaLib-Bundle.lua'))()
+]]
+
+
 --  1. LOAD
--- ########################################################################
 
 local URL = 'https://raw.githubusercontent.com/Teddyfeit/kicia-lib/refs/heads/main/library.lua'
+
+-- this must read kicia-2026-10-07 in the console, otherwise you are
+-- running an old copy of this file
+local BUILD = 'kicia-2026-10-07'
+if URL:find('sry%-bro%-idk') then
+    warn('[demo] OLD LINK - this copy is outdated, reload the file from disk')
+end
+print('[demo] build ' .. BUILD .. '  |  ' .. URL)
 
 local Library = loadstring(game:HttpGet(URL))()
 
 print('[demo] Library.Version = ' .. tostring(Library.Version))
 
 
--- ########################################################################
 --  2. WINDOW
--- ########################################################################
 
 local Window = Library:CreateWindow{
     Title     = 'Complete Demo',
-    Icon      = 'rbxassetid://127234874352422',
     MenuKey   = Enum.KeyCode.RightShift,
     Accent    = Color3.fromRGB(197, 59, 59),
     Directory = 'CompleteDemo',
@@ -25,11 +46,9 @@ local Window = Library:CreateWindow{
 print('[demo] menu key = ' .. tostring(Window.Keybind))
 
 
--- ########################################################################
 --  3. HELPER - advanced widgets can fail if Kicia expects other props,
 --     so every one of them runs through pcall and reports instead of
 --     killing the whole script.
--- ########################################################################
 
 local function tryRaw(group, name, props)
     local ok, res = pcall(function() return group:AddRaw(name, props) end)
@@ -42,20 +61,18 @@ local function tryRaw(group, name, props)
 end
 
 
--- ########################################################################
 --  TAB 1  -  BASIC WIDGETS
--- ########################################################################
 
 local tab1 = Window:AddTab('Basics', { Description = 'Every core widget' })
 local L1 = tab1:AddLeftGroupbox('Left column')
 local R1 = tab1:AddRightGroupbox('Right column')
 local F1 = tab1:AddFullGroupbox('Full width')
 
--- ── Label ──────────────────────────────────────────────────────────────
+-- Label
 L1:AddLabel('Text label (string form)')
 L1:AddLabel{ Text = 'Text label (table form)' }
 
--- ── Toggle ─────────────────────────────────────────────────────────────
+-- Toggle
 local master = L1:AddToggle{
     Text     = 'Master switch',
     Default  = true,
@@ -63,7 +80,7 @@ local master = L1:AddToggle{
     Callback = function(v) print('[demo] master = ' .. tostring(v)) end,
 }
 
--- ── Slider ─────────────────────────────────────────────────────────────
+-- Slider
 L1:AddSlider{
     Text = 'Whole numbers', Min = 0, Max = 100,
     Rounding = 0, Default = 50, Suffix = '%',
@@ -85,7 +102,7 @@ L1:AddSlider{
 
 L1:AddDivider()
 
--- ── Buttons, all three variants ────────────────────────────────────────
+-- Buttons, all three variants
 L1:AddButton{
     Text = 'Default variant',
     Callback = function() print('[demo] default button') end,
@@ -101,7 +118,7 @@ L1:AddButton{
 
 L1:AddDivider()
 
--- ── Input (text box) ───────────────────────────────────────────────────
+-- Input (text box)
 local inputObj = L1:AddInput{
     Text        = 'Text box',
     Placeholder = 'type here',
@@ -109,7 +126,7 @@ local inputObj = L1:AddInput{
     Callback    = function(v) print('[demo] text = ' .. tostring(v)) end,
 }
 
--- ── Keybind (best effort - pcall'd inside the library) ─────────────────
+-- Keybind (best effort - pcall'd inside the library)
 local keyObj = L1:AddKeybind{
     Text     = 'Keybind row',
     Callback = function(k) print('[demo] key = ' .. tostring(k)) end,
@@ -119,7 +136,7 @@ if keyObj == nil then
 end
 
 
--- ── Dropdown ───────────────────────────────────────────────────────────
+-- Dropdown
 local dropObj = R1:AddDropdown{
     Text     = 'Dropdown',
     Options  = { 'First', 'Second', 'Third', 'Fourth' },
@@ -128,7 +145,7 @@ local dropObj = R1:AddDropdown{
     Callback = function(v) print('[demo] dropdown = ' .. v) end,
 }
 
--- ── Color picker ───────────────────────────────────────────────────────
+-- Color picker
 local colorObj = R1:AddColorPicker{
     Text     = 'Color picker',
     Default  = Color3.fromRGB(255, 80, 80),
@@ -149,7 +166,7 @@ R1:AddButton{
     Callback = function() colorObj:Set(Color3.fromRGB(0, 255, 120)) end,
 }
 
--- ── Dependency box - only visible while the master toggle is on ────────
+-- Dependency box - only visible while the master toggle is on
 local dep = R1:AddDependencyBox(master)
 dep:AddLabel('Hidden until the master switch is on')
 dep:AddSlider{
@@ -162,7 +179,7 @@ dep:AddToggle{
     Callback = function(v) print('[demo] nested = ' .. tostring(v)) end,
 }
 
--- ── Full-width group ───────────────────────────────────────────────────
+-- Full-width group
 F1:AddLabel('This section spans both columns.')
 F1:AddButton{
     Text = 'Print every current value',
@@ -175,9 +192,7 @@ F1:AddButton{
 }
 
 
--- ########################################################################
 --  TAB 2  -  ADVANCED WIDGETS (via AddRaw, Kicia's own argument names)
--- ########################################################################
 
 local tab2 = Window:AddTab('Advanced', { Description = 'AddRaw widgets' })
 local A1 = tab2:AddLeftGroupbox('Selection widgets')
@@ -210,7 +225,7 @@ tryRaw(A1, 'AddOrderedList', {
 tryRaw(A2, 'AddIconStrip', {
     Label = 'Icon strip',
     Options = {
-        { Name = 'A', Icon = 'rbxassetid://127234874352422' },
+        { Name = 'A', Icon = 'rbxassetid://118838006164746' },
         { Name = 'B', Icon = 'rbxassetid://106205298246017' },
     },
 })
@@ -232,9 +247,7 @@ A2:AddDivider()
 A2:AddLabel('AddSkinChanger is deliberately not demoed - it belongs to the original project, not to a UI test.')
 
 
--- ########################################################################
 --  TAB 3  -  ELEMENT API AND WINDOW API
--- ########################################################################
 
 local tab3 = Window:AddTab('API', { Description = 'Get / Set / OnChanged / window' })
 local E1 = tab3:AddLeftGroupbox('Element API')
@@ -273,7 +286,7 @@ E1:AddButton{
 E1:AddDivider()
 E1:AddLabel('Type / State / Raw are fields. Get / Set / OnChanged are methods.')
 
--- ── Window API ─────────────────────────────────────────────────────────
+-- Window API
 E2:AddButton{
     Text = 'Accent: red', Variant = 'primary',
     Callback = function() Window:SetAccent(Color3.fromRGB(197, 59, 59)) end,
@@ -320,9 +333,7 @@ E2:AddButton{
 }
 
 
--- ########################################################################
 --  DONE
--- ########################################################################
 
 print('[demo] ready - press RightShift to open/close the menu')
 print('[demo] tabs: Basics | Advanced | API')
