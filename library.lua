@@ -19410,6 +19410,66 @@ function Library:CreateWindow(opts)
         return nil
     end
 
+    -- Menu key.
+    -- Kicia's own handler sits at KiciaUI line 18132 and starts with
+    -- `if gameProcessedEvent then return end`. Any focused text box
+    -- sets that flag, so the key silently dies while you are typing.
+    -- Its connection cannot be reached from out here, so do not try to
+    -- replace it - only take over when it did nothing. A one frame
+    -- mirror tells the two cases apart: Heartbeat runs after the input
+    -- event of the same frame, so by the time this runs, a visible
+    -- difference to the mirror means Kicia already toggled.
+    local menuKey = opts.MenuKey or menu.Keybind or Enum.KeyCode.RightShift
+    local UIS = game:GetService('UserInputService')
+    local RunService = game:GetService('RunService')
+    local mirror = menu.Visible
+
+    RunService.Heartbeat:Connect(function()
+        mirror = menu.Visible
+    end)
+
+    UIS.InputBegan:Connect(function(input, gameProcessed)
+        if input.UserInputType ~= Enum.UserInputType.Keyboard then
+            return
+        end
+        if input.KeyCode ~= menuKey then
+            return
+        end
+        if UIS:GetFocusedTextBox() ~= nil then
+            return
+        end
+        if menu.Visible ~= mirror then
+            return
+        end
+        pcall(function() menu:SetVisible(not menu.Visible) end)
+    end)
+
+    -- a script you just ran should put something on screen, instead of
+    -- hiding the menu behind a key that may or may not be listening
+    if not opts.StartHidden then
+        task.defer(function()
+            pcall(function() menu:SetVisible(true) end)
+        end)
+    end
+
+    -- in case the key ever fails again: a toggle you can always call
+    function Window:ToggleMenu()
+        pcall(function() menu:SetVisible(not menu.Visible) end)
+        return menu.Visible
+    end
+
+    -- change the key at runtime. Window.Keybind is only a copy taken at
+    -- construction time, writing to it does nothing - go through here.
+    function Window:SetMenuKey(key)
+        if typeof(key) ~= 'EnumItem' then
+            warn('[KiciaLib] SetMenuKey needs Enum.KeyCode.<Key>')
+            return false
+        end
+        menuKey = key
+        pcall(function() menu.Keybind = key end)
+        return true
+    end
+
     -- Unload fires your OnUnload callback, Destroy then saves state and
     -- tears the trove down. Both are needed for a clean shutdown.
     function Window:Unload()
