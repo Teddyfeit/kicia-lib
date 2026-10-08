@@ -548,8 +548,17 @@ do
     function P.bind(trove, config, control, path, opts)
         local debounce = opts ~= nil and opts.Debounce == true
         local writeBack = opts ~= nil and opts.WriteBack or nil
-        control:Set(config:Get(path), true)
-        trove:Connect(config:Changed(path), function(v) control:Set(v, true) end)
+        -- 'true' = stay quiet when the path does not exist yet, so an
+        -- unset path yields nil instead of throwing. Only push when
+        -- there IS a value - Set(nil) crashes some widgets (the colour
+        -- picker reads arg2.Rgb) and wipes their Default in the others.
+        local initial = config:Get(path, true)
+        if initial ~= nil then
+            control:Set(initial, true)
+        end
+        trove:Connect(config:Changed(path), function(v)
+            if v ~= nil then control:Set(v, true) end
+        end)
         local pending, scheduled = nil, false
         local function write(v)
             if writeBack then writeBack(v) else config:Set(path, v) end
@@ -19005,31 +19014,34 @@ local function copy(t)
     return o
 end
 
--- Profiles: every value-carrying widget gets Config = { 'Widgets', n },
--- numbered in creation order - the same script builds the same widgets
--- in the same order, so the numbers match again on restore. Reset per
--- window. widgetRegistry lets LoadConfig fire the script's Callbacks
--- for values that came back from disk; duringConfigLoad marks the
--- window between "file read" and "callbacks applied".
+-- Profiles: every value-carrying widget gets Config = { 'Widgets', 'wN' }
+-- (w1, w2, ... - string names keep the profile JSON object-shaped even
+-- when only some widgets were touched). The same script builds the
+-- same widgets in the same order, so the names match again on restore.
+-- Reset per window. widgetRegistry lets LoadConfig fire the script's
+-- Callbacks for values that came back from disk; duringConfigLoad marks
+-- the window between "file read" and "callbacks applied".
 local widgetConfigCounter = 0
 local widgetRegistry = {}
 local duringConfigLoad = false
 
 -- Linoria calls it Text / Callback, Kicia calls it Label / OnChanged.
 -- Both spellings work; this produces the Kicia shape.
--- Second argument skips profile numbering: buttons have no value, and
+-- Second argument skips profile naming: buttons have no value, and
 -- raw widgets (AddRaw) are unknown shapes that may not bind at all -
--- a consumed number without a stored value would leave a hole in the
--- JSON profile.
+-- a consumed name without a stored value would leave a gap in the
+-- profile.
 local function toKicia(t, noConfig)
     local o = copy(t or {})
     if o.Text ~= nil and o.Label == nil then o.Label = o.Text end
     if o.Callback ~= nil and o.OnChanged == nil then o.OnChanged = o.Callback end
     if o.Rounding ~= nil and o.Step == nil then o.Step = stepFor(o.Rounding) end
-    -- widget value -> profile, unless the caller names a path itself
+    -- widget value -> profile, unless the caller names a path itself;
+    -- w-strings keep the JSON object-shaped even when only some of
+    -- the widgets were touched, so restoring always finds the key
     if o.Config == nil and not noConfig then
         widgetConfigCounter = widgetConfigCounter + 1
-        o.Config = { 'Widgets', widgetConfigCounter }
+        o.Config = { 'Widgets', 'w' .. widgetConfigCounter }
     end
     return o
 end
@@ -19192,12 +19204,6 @@ local function makeGroup(section)
         local o = toKicia(props)
         local ok, ctrl = pcall(section.AddKeybind, section, o)
         if not ok then
-            -- free the profile number this widget will never use, so
-            -- the Widgets list in the JSON stays dense
-            if type(o.Config) == 'table' and o.Config[1] == 'Widgets'
-                and o.Config[2] == widgetConfigCounter then
-                widgetConfigCounter = widgetConfigCounter - 1
-            end
             warn('[KiciaLib] AddKeybind failed: ' .. tostring(ctrl))
             return nil
         end
