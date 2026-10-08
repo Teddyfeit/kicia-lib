@@ -19243,15 +19243,93 @@ end
 
 -- CreateWindow
 -- opts: Title, Icon, Description, Directory, MenuKey (KeyCode),
---       Accent (Color3), OnUnload (function)
+--       Accent (Color3), OnUnload (function),
+--       ConfigDirectory (folder for the profile .json files),
+--       SettingsTab (false to hide the universal Settings tab)
 function Library:CreateWindow(opts)
     opts = opts or {}
 
+    -- Config store. KiciaUI ships its ReactiveStore + ConfigManager
+    -- behind registry key l: widget values, the Theme, and the on-disk
+    -- profiles all live in it. Without it the Settings tab's profile
+    -- buttons would crash on click (they call persistence:* without a
+    -- nil check) and theme colors would never be saved, so build one
+    -- whenever the module is present. Everything below is pcall-guarded;
+    -- a script keeps working even if the store cannot be built.
+    local store, buildError
+    do
+        local ok, storeModule = pcall(function()
+            return UI and UI.l and UI.l() or nil
+        end)
+
+        if ok and type(storeModule) == 'table' and type(storeModule.new) == 'function' then
+            local built
+            ok, built = pcall(function()
+                return storeModule.new{
+                    DefaultConfig = {
+                        Theme = {},
+                        Notifications = {
+                            Enabled = true,
+                            Side = 'TopRight',
+                            Offset = 0,
+                            Size = 18,
+                            Font = 'SemiBold',
+                        },
+                        AutoExecuteScript = { Enabled = false },
+                    },
+                    CurrentVersion = 1,
+                    LegacyVersion  = 0,
+                    SavePath       = opts.ConfigDirectory or 'kicialib_configs',
+                    Migrations     = {},
+                }
+            end)
+            if ok and type(built) == 'table' then
+                store = built
+            else
+                buildError = tostring(built)
+            end
+        else
+            buildError = 'no reactive store module in KiciaUI'
+        end
+    end
+
+    -- The menu's Config is what widgets bind to. Kicia's binding helper
+    -- calls config:Get, config:Set, config:GetBase and config:Changed
+    -- (path -> per-path signal). The store itself only offers
+    -- GetPropertyChangedSignal(path), and its internal Set ends with
+    -- self.Changed:Fire(...) - so a metatable facade is out (that would
+    -- hand the store the wrong 'self'), instead forward explicitly:
+    -- Set/Get then run with the store as self and keep working.
+    local menuConfig = store
+    if store then
+        menuConfig = {}
+        menuConfig.Get = function(_, path, create)
+            return store:Get(path, create)
+        end
+        menuConfig.Set = function(_, path, value)
+            return store:Set(path, value)
+        end
+        menuConfig.GetBase = function(_, path)
+            return store:GetBase(path)
+        end
+        menuConfig.Changed = function(_, path)
+            return store:GetPropertyChangedSignal(path)
+        end
+    elseif buildError then
+        warn('[KiciaLib] reactive store not available - profiles and theme'
+            .. ' colors are not persisted (' .. buildError .. ')')
+    end
+
     local menu = MenuModule.new{
-        Title     = opts.Title or 'KiciaLib',
-        Icon      = opts.Icon,
-        Directory = opts.Directory,
-        OnUnload  = opts.OnUnload,
+        Title          = opts.Title or 'KiciaLib',
+        Icon           = opts.Icon,
+        Directory      = opts.Directory,
+        OnUnload       = opts.OnUnload,
+        Config         = menuConfig,
+        Persistence    = store,
+        ThemePath      = { 'Theme' },
+        NotificationPath = { 'Notifications' },
+        AutoExecuteEnabledPath = { 'AutoExecuteScript', 'Enabled' },
     }
 
     if opts.Accent and menu.SetAccent then
@@ -19419,25 +19497,28 @@ function Library:CreateWindow(opts)
     -- at all: read the raw key state every frame with IsKeyDown. That
     -- works no matter what else is focused or running.
     --
-    -- Kicia's own listener must not toggle on top of that, otherwise
-    -- every press flips the menu twice and nothing seems to happen.
-    -- It only fires when the incoming key equals obj.Keybind, and no
-    -- real input ever equals nil - so defuse it the same way. Nothing
-    -- else ever reads obj.Keybind: the one Settings page that does
-    -- only exists when someone calls menu:AddSettingsTab() explicitly,
-    -- and this library never does.
-    local menuKey = opts.MenuKey or menu.Keybind or Enum.KeyCode.RightShift
-    if typeof(menuKey) ~= 'EnumItem' then
-        menuKey = Enum.KeyCode.RightShift
+    -- Kicia's own handler would toggle on top of that. It bails out
+    -- early when obj:ShouldBlockKeybindCapture(input) returns true, so
+    -- shadowing that method on the menu object keeps Kicia's listener
+    -- dead for good - and menu.Keybind can keep holding the real key.
+    -- The Settings tab displays it and writes it back, and the poll
+    -- below reads it fresh every frame, so rebinding there just works.
+    menu.ShouldBlockKeybindCapture = function()
+        return true
     end
-    menu.Keybind = nil
+
+    -- A saved Keybind can come back from state data, and an explicit
+    -- MenuKey wins over that; anything else falls back to RightShift.
+    if typeof(menu.Keybind) ~= 'EnumItem' then
+        menu.Keybind = Enum.KeyCode.RightShift
+    end
 
     local UIS = game:GetService('UserInputService')
     local RunService = game:GetService('RunService')
     local wasDown = false
 
     RunService.Heartbeat:Connect(function()
-        local down = UIS:IsKeyDown(menuKey)
+        local down = UIS:IsKeyDown(menu.Keybind)
         local fresh = down and not wasDown
         wasDown = down
 
@@ -19464,7 +19545,7 @@ function Library:CreateWindow(opts)
             warn('[KiciaLib] SetMenuKey needs Enum.KeyCode.<Key>')
             return false
         end
-        menuKey = key
+        menu.Keybind = key
         return true
     end
 
@@ -19480,7 +19561,39 @@ function Library:CreateWindow(opts)
         activeMenu = nil
     end
 
-    Window.Keybind = menuKey
+    -- Settings tab. Kicia builds it out of the box (menu:AddSettingsTab):
+    -- General (watermark, keybind list, notifications), Config Profiles
+    -- (create / save / load / delete / export / import whole-menu
+    -- profiles) and Theme (accent plus every color). It needs the
+    -- reactive store built above; without one the tab still opens, only
+    -- saving is inert.
+    function Window:AddSettingsTab()
+        local ok, tab, settings = pcall(function()
+            return menu:AddSettingsTab()
+        end)
+        if ok and tab then
+            return makeTab(tab), settings
+        end
+        warn('[KiciaLib] AddSettingsTab failed: ' .. tostring(tab))
+        return nil
+    end
+
+    -- Universal: every window ends with the Settings tab, unless the
+    -- script opts out with SettingsTab = false. The tab is created one
+    -- tick later, after the calling script has added its own tabs, so
+    -- Settings always ends up last - deferring is the only reorder
+    -- mechanism there is, Kicia has no MoveTab. (A script that yields
+    -- in the middle of building can still land after it - then call
+    -- Window:AddSettingsTab() yourself at the spot you want.)
+    if opts.SettingsTab ~= false then
+        task.defer(function()
+            pcall(function()
+                menu:AddSettingsTab()
+            end)
+        end)
+    end
+
+    Window.Keybind = menu.Keybind
 
     -- first run: show it, exactly like LinoriaLib does
     pcall(function() menu:SetVisible(true, true) end)
