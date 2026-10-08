@@ -19411,46 +19411,45 @@ function Library:CreateWindow(opts)
     end
 
     -- Menu key.
-    -- Kicia's own handler sits at KiciaUI line 18132 and starts with
-    -- `if gameProcessedEvent then return end`. Any focused text box
-    -- sets that flag, so the key silently dies while you are typing.
-    -- Its connection cannot be reached from out here, so do not try to
-    -- replace it - only take over when it did nothing. A one frame
-    -- mirror tells the two cases apart: Heartbeat runs after the input
-    -- event of the same frame, so by the time this runs, a visible
-    -- difference to the mirror means Kicia already toggled.
+    -- Kicia listens for UserInputService.InputBegan itself (KiciaUI
+    -- line 18132) and gives up the moment gameProcessedEvent is set,
+    -- which happens as soon as any text box has focus. Its connection
+    -- cannot be reached from out here, and plain event listeners get
+    -- swallowed by some executors entirely. So do not rely on events
+    -- at all: read the raw key state every frame with IsKeyDown. That
+    -- works no matter what else is focused or running.
+    --
+    -- Kicia's own listener must not toggle on top of that, otherwise
+    -- every press flips the menu twice and nothing seems to happen.
+    -- It only fires when the incoming key equals obj.Keybind, and no
+    -- real input ever equals nil - so defuse it the same way. Nothing
+    -- else ever reads obj.Keybind: the one Settings page that does
+    -- only exists when someone calls menu:AddSettingsTab() explicitly,
+    -- and this library never does.
     local menuKey = opts.MenuKey or menu.Keybind or Enum.KeyCode.RightShift
+    if typeof(menuKey) ~= 'EnumItem' then
+        menuKey = Enum.KeyCode.RightShift
+    end
+    menu.Keybind = nil
+
     local UIS = game:GetService('UserInputService')
     local RunService = game:GetService('RunService')
-    local mirror = menu.Visible
+    local wasDown = false
 
     RunService.Heartbeat:Connect(function()
-        mirror = menu.Visible
-    end)
+        local down = UIS:IsKeyDown(menuKey)
+        local fresh = down and not wasDown
+        wasDown = down
 
-    UIS.InputBegan:Connect(function(input, gameProcessed)
-        if input.UserInputType ~= Enum.UserInputType.Keyboard then
-            return
-        end
-        if input.KeyCode ~= menuKey then
+        if not fresh then
             return
         end
         if UIS:GetFocusedTextBox() ~= nil then
             return
         end
-        if menu.Visible ~= mirror then
-            return
-        end
+
         pcall(function() menu:SetVisible(not menu.Visible) end)
     end)
-
-    -- a script you just ran should put something on screen, instead of
-    -- hiding the menu behind a key that may or may not be listening
-    if not opts.StartHidden then
-        task.defer(function()
-            pcall(function() menu:SetVisible(true) end)
-        end)
-    end
 
     -- in case the key ever fails again: a toggle you can always call
     function Window:ToggleMenu()
@@ -19466,7 +19465,6 @@ function Library:CreateWindow(opts)
             return false
         end
         menuKey = key
-        pcall(function() menu.Keybind = key end)
         return true
     end
 
@@ -19482,7 +19480,7 @@ function Library:CreateWindow(opts)
         activeMenu = nil
     end
 
-    Window.Keybind = menu.Keybind
+    Window.Keybind = menuKey
 
     -- first run: show it, exactly like LinoriaLib does
     pcall(function() menu:SetVisible(true, true) end)
