@@ -19005,13 +19005,32 @@ local function copy(t)
     return o
 end
 
+-- Profiles: every value-carrying widget gets Config = { 'Widgets', n },
+-- numbered in creation order - the same script builds the same widgets
+-- in the same order, so the numbers match again on restore. Reset per
+-- window. widgetRegistry lets LoadConfig fire the script's Callbacks
+-- for values that came back from disk; duringConfigLoad marks the
+-- window between "file read" and "callbacks applied".
+local widgetConfigCounter = 0
+local widgetRegistry = {}
+local duringConfigLoad = false
+
 -- Linoria calls it Text / Callback, Kicia calls it Label / OnChanged.
 -- Both spellings work; this produces the Kicia shape.
-local function toKicia(t)
+-- Second argument skips profile numbering: buttons have no value, and
+-- raw widgets (AddRaw) are unknown shapes that may not bind at all -
+-- a consumed number without a stored value would leave a hole in the
+-- JSON profile.
+local function toKicia(t, noConfig)
     local o = copy(t or {})
     if o.Text ~= nil and o.Label == nil then o.Label = o.Text end
     if o.Callback ~= nil and o.OnChanged == nil then o.OnChanged = o.Callback end
     if o.Rounding ~= nil and o.Step == nil then o.Step = stepFor(o.Rounding) end
+    -- widget value -> profile, unless the caller names a path itself
+    if o.Config == nil and not noConfig then
+        widgetConfigCounter = widgetConfigCounter + 1
+        o.Config = { 'Widgets', widgetConfigCounter }
+    end
     return o
 end
 
@@ -19057,10 +19076,16 @@ local function wrap(ctrl, kind, opts)
 
     ctrl:OnChanged(function(raw)
         obj.State = decode and decode(raw) or raw
+        if duringConfigLoad then
+            obj._firedThisLoad = true
+        end
         if opts.Callback then
             opts.Callback(obj.State)
         end
     end)
+
+    obj._callback = opts.Callback
+    widgetRegistry[#widgetRegistry + 1] = obj
 
     return obj
 end
@@ -19146,7 +19171,7 @@ local function makeGroup(section)
     -- Button
     -- Text, Callback, Variant = 'default' | 'primary' | 'ghost'
     function Group:AddButton(props)
-        local o = toKicia(props)
+        local o = toKicia(props, true) -- no value, no profile spot
         o.OnClick = o.OnClick or o.Callback or function() end
         o.Callback = nil
         o.OnChanged = nil
@@ -19167,6 +19192,12 @@ local function makeGroup(section)
         local o = toKicia(props)
         local ok, ctrl = pcall(section.AddKeybind, section, o)
         if not ok then
+            -- free the profile number this widget will never use, so
+            -- the Widgets list in the JSON stays dense
+            if type(o.Config) == 'table' and o.Config[1] == 'Widgets'
+                and o.Config[2] == widgetConfigCounter then
+                widgetConfigCounter = widgetConfigCounter - 1
+            end
             warn('[KiciaLib] AddKeybind failed: ' .. tostring(ctrl))
             return nil
         end
@@ -19207,12 +19238,15 @@ local function makeGroup(section)
     -- Also: AddRangeSlider, AddList, AddMultiList, AddMultiDropdown,
     --       AddIconStrip, AddViewport, AddOrderedList, AddGear,
     --       AddMultiSection, AddSkinChanger
+    -- Raw widgets are not part of a profile unless you pass a Config
+    -- path yourself - the wrapper cannot know which of them bind a
+    -- value, and a wrong guess would leave holes in the profile.
     function Group:AddRaw(name, props)
         local fn = section[name]
         if type(fn) ~= 'function' then
             error('[KiciaLib] section has no method ' .. tostring(name), 2)
         end
-        local ok, ctrl = pcall(fn, section, toKicia(props))
+        local ok, ctrl = pcall(fn, section, toKicia(props, true))
         if not ok then
             error('[KiciaLib] ' .. name .. ' failed: ' .. tostring(ctrl), 2)
         end
@@ -19248,6 +19282,10 @@ end
 --       SettingsTab (false to hide the universal Settings tab)
 function Library:CreateWindow(opts)
     opts = opts or {}
+
+    -- fresh profile numbering and widget registry for this window
+    widgetConfigCounter = 0
+    widgetRegistry = {}
 
     -- Config store. KiciaUI ships its ReactiveStore + ConfigManager
     -- behind registry key l: widget values, the Theme, and the on-disk
@@ -19419,8 +19457,34 @@ function Library:CreateWindow(opts)
     end
 
     function Window:LoadConfig(name)
+        -- snapshot the current values so we can tell afterwards which
+        -- widgets really changed
+        local before = {}
+        for i = 1, #widgetRegistry do
+            before[i] = widgetRegistry[i]:Get()
+            widgetRegistry[i]._firedThisLoad = false
+        end
+
+        duringConfigLoad = true
         local _, err = configCall('LoadFromFile', name)
-        return configFailed(err, 'LoadConfig')
+        duringConfigLoad = false
+
+        if configFailed(err, 'LoadConfig') then
+            return
+        end
+
+        -- Kicia pushes restored values into the controls silently, so
+        -- the script's own Callbacks may not have run yet. Fire them
+        -- once for every widget whose value actually changed; widgets
+        -- Kicia already reported during the load are skipped, so no
+        -- Callback runs twice.
+        for i = 1, #widgetRegistry do
+            local w = widgetRegistry[i]
+            local v = w:Get()
+            if not w._firedThisLoad and v ~= before[i] and type(w._callback) == 'function' then
+                w._callback(v)
+            end
+        end
     end
 
     function Window:CreateConfig(name)
